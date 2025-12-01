@@ -1,72 +1,94 @@
-# simple_app.py
+%%writefile simple_app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
 import shap
-import matplotlib.pyplot as plt
 
-# -------------------------------
-# Joblib import (for loading model)
-# -------------------------------
+# Import joblib
 try:
     import joblib
     JOBLIB_AVAILABLE = True
-except ImportError:
+except:
     JOBLIB_AVAILABLE = False
-    st.warning("⚠️ joblib not available — demo mode enabled")
+    st.warning("⚠️ joblib missing — demo mode enabled")
 
-# -------------------------------
-# Streamlit page config
-# -------------------------------
+# Streamlit settings
 st.set_page_config(page_title="Fair AI Demo", page_icon="🤖")
-st.title("Fair AI Demo with SHAP Explainability")
+st.title("🎯 Fair AI Income Predictor")
+st.write("Fair AI model with Explainability (SHAP).")
 
-# -------------------------------
-# Load data and model
-# -------------------------------
+# Load models
+model = scaler = explainer = None
+
 if JOBLIB_AVAILABLE:
-    model = joblib.load("model.joblib")  # Replace with your model path
-    X_train = joblib.load("X_train.joblib")  # Replace with your training data
+    try:
+        model = joblib.load("models/baseline_model.pkl")
+        scaler = joblib.load("models/scaler.pkl")
+        explainer = joblib.load("models/explainer.pkl")
+        st.success("✅ Models + Explainer loaded")
+    except Exception as e:
+        st.error(f"❌ Error loading models: {e}")
 else:
-    st.info("Demo mode: generating synthetic data")
-    from sklearn.datasets import load_boston
-    from sklearn.ensemble import RandomForestRegressor
+    st.warning("⚠️ joblib not installed — running demo rules.")
 
-    data = load_boston()
-    X_train = pd.DataFrame(data.data, columns=data.feature_names)
-    y_train = pd.Series(data.target)
-    model = RandomForestRegressor()
-    model.fit(X_train, y_train)
+# Inputs
+st.subheader("Enter Details")
+age = st.slider("Age", 18, 80, 35)
+education = st.slider("Education Level", 1, 16, 13)
+hours = st.slider("Hours per Week", 10, 80, 40)
+gender = st.selectbox("Gender", ["Female", "Male"])
+race = st.selectbox("Race", ["Non-White", "White"])
 
-# -------------------------------
-# SHAP explainability setup
-# -------------------------------
-# Do NOT cache this function since SHAP objects are unhashable
-def calculate_shap(model, X_train):
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_train)
-    shap_df = pd.DataFrame({
-        "Feature": X_train.columns,
-        "Mean |SHAP value|": np.abs(shap_values).mean(axis=0)
-    }).sort_values(by="Mean |SHAP value|", ascending=False)
-    return shap_df, explainer, shap_values
+gender_num = 1 if gender == "Male" else 0
+race_num = 1 if race == "White" else 0
 
-shap_df, explainer, shap_values = calculate_shap(model, X_train)
+if st.button("Predict Income"):
+    features = np.array([[age, education, hours, gender_num, race_num]])
 
-# -------------------------------
-# Display SHAP feature importance
-# -------------------------------
-st.subheader("SHAP Feature Importance")
-st.dataframe(shap_df)
+    if model:
+        try:
+            features_scaled = scaler.transform(features)
+            prediction = model.predict(features_scaled)[0]
+            probability = model.predict_proba(features_scaled)[0][1]
+        except:
+            prediction = int(age > 30 and education > 12)
+            probability = 0.8 if prediction else 0.3
+    else:
+        prediction = int(age > 30 and education > 12)
+        probability = 0.8 if prediction else 0.3
 
-# -------------------------------
-# SHAP summary plot
-# -------------------------------
-st.subheader("SHAP Summary Plot")
-fig, ax = plt.subplots(figsize=(10, 6))
-shap.summary_plot(shap_values, X_train, show=False)
-st.pyplot(fig)
+    # Output
+    st.subheader("🔍 Prediction Result")
+    st.metric("Confidence", f"{probability:.1%}")
+    if prediction:
+        st.success("HIGH INCOME (>50K)")
+    else:
+        st.info("LOW INCOME (<=50K)")
 
+    # Fairness check
+    if gender == "Female" and probability < 0.4:
+        st.warning("⚠️ Possible gender bias detected")
+
+    # ---------------------------------
+    # SHAP EXPLAINABILITY SECTION
+    # ---------------------------------
+    st.subheader("🧠 Explainability (SHAP Feature Importance)")
+
+    if explainer:
+        try:
+            shap_values = explainer.shap_values(features_scaled)[1]
+
+            shap_df = pd.DataFrame({
+                "Feature": ["Age", "Education", "Hours", "Gender", "Race"],
+                "SHAP Value": shap_values[0]
+            })
+
+            st.table(shap_df)
+            st.caption("Higher SHAP values → stronger contribution to HIGH income.")
+        except Exception as e:
+            st.error(f"SHAP Error: {e}")
+    else:
+        st.info("SHAP explainer not available.")
 
 st.markdown("---")
 st.write("Built with ❤️ using Streamlit")
