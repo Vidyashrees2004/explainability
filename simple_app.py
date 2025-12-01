@@ -1,49 +1,47 @@
+# simple_app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
 import shap
 import matplotlib.pyplot as plt
-from sklearn.datasets import fetch_openml
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
+
+# -------------------------------
+# Joblib import (for loading model)
+# -------------------------------
+try:
+    import joblib
+    JOBLIB_AVAILABLE = True
+except ImportError:
+    JOBLIB_AVAILABLE = False
+    st.warning("⚠️ joblib not available — demo mode enabled")
 
 # -------------------------------
 # Streamlit page config
 # -------------------------------
-st.set_page_config(page_title="🏠 Boston Housing Predictor", page_icon="🏡")
-st.title("Boston Housing Price Predictor with SHAP Explainability")
+st.set_page_config(page_title="Fair AI Demo", page_icon="🤖")
+st.title("Fair AI Demo with SHAP Explainability")
 
 # -------------------------------
-# Load dataset
+# Load data and model
 # -------------------------------
-@st.cache_data
-def load_data():
-    boston = fetch_openml(name="Boston", version=1, as_frame=True)
-    X = boston.data
-    y = boston.target
-    return X, y
+if JOBLIB_AVAILABLE:
+    model = joblib.load("model.joblib")  # Replace with your model path
+    X_train = joblib.load("X_train.joblib")  # Replace with your training data
+else:
+    st.info("Demo mode: generating synthetic data")
+    from sklearn.datasets import load_boston
+    from sklearn.ensemble import RandomForestRegressor
 
-X, y = load_data()
-st.subheader("Dataset Preview")
-st.dataframe(X.head())
-
-# -------------------------------
-# Train model
-# -------------------------------
-@st.cache_data
-def train_model(X, y):
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    data = load_boston()
+    X_train = pd.DataFrame(data.data, columns=data.feature_names)
+    y_train = pd.Series(data.target)
+    model = RandomForestRegressor()
     model.fit(X_train, y_train)
-    return model, X_train, X_test, y_train, y_test
-
-model, X_train, X_test, y_train, y_test = train_model(X, y)
-st.success("✅ Model trained successfully!")
 
 # -------------------------------
 # SHAP explainability setup
 # -------------------------------
-@st.cache_resource
+# Do NOT cache this function since SHAP objects are unhashable
 def calculate_shap(model, X_train):
     explainer = shap.TreeExplainer(model)
     shap_values = explainer.shap_values(X_train)
@@ -55,34 +53,19 @@ def calculate_shap(model, X_train):
 
 shap_df, explainer, shap_values = calculate_shap(model, X_train)
 
-st.subheader("Global Feature Importance")
+# -------------------------------
+# Display SHAP feature importance
+# -------------------------------
+st.subheader("SHAP Feature Importance")
 st.dataframe(shap_df)
 
-fig, ax = plt.subplots()
+# -------------------------------
+# SHAP summary plot
+# -------------------------------
+st.subheader("SHAP Summary Plot")
+fig, ax = plt.subplots(figsize=(10, 6))
 shap.summary_plot(shap_values, X_train, show=False)
 st.pyplot(fig)
-
-# -------------------------------
-# Interactive prediction
-# -------------------------------
-st.subheader("Predict & Explain a Sample")
-
-sample_index = st.slider("Select a sample row from training data", 0, X_train.shape[0]-1, 0)
-sample = X_train.iloc[sample_index:sample_index+1]
-
-prediction = model.predict(sample)[0]
-st.write(f"Predicted Price for selected sample: **${prediction:.2f}k**")
-
-# SHAP explanation for selected sample
-st.write("SHAP Force Plot for selected sample:")
-shap.initjs()
-fig2, ax2 = plt.subplots(figsize=(10, 4))
-shap.force_plot(explainer.expected_value, shap_values[sample_index,:], sample, matplotlib=True, show=False)
-st.pyplot(fig2)
-
-# Optionally display raw feature values
-if st.checkbox("Show selected sample features"):
-    st.write(sample)
 
 
 st.markdown("---")
