@@ -67,6 +67,38 @@ if st.button("Predict Income"):
     # Fairness check
     if gender == "Female" and probability < 0.4:
         st.warning("⚠️ Possible gender bias detected")
+# SHAP Explainability
+import shap
+
+try:
+    # Create small background data (5 samples)
+    background = np.array([
+        [25, 12, 40, 0, 0],
+        [30, 13, 45, 1, 1],
+        [35, 14, 50, 0, 1],
+        [40, 16, 60, 1, 0],
+        [45, 10, 30, 0, 0]
+    ])
+
+    # Scale background data
+    background_scaled = scaler.transform(background)
+
+    # Use KernelExplainer for any model
+    explainer = shap.KernelExplainer(model.predict_proba, background_scaled)
+
+    shap_values = explainer.shap_values(features_scaled)
+
+    st.subheader("📊 SHAP Feature Importance")
+    st.write("Higher value = greater impact on income prediction")
+
+    shap_bar = shap_values[1]  # class 1 (high income)
+    feature_names = ["Age", "Education", "Hours", "Gender", "Race"]
+
+    for name, val in zip(feature_names, shap_bar[0]):
+        st.write(f"**{name}:** {val:.4f}")
+
+except Exception as e:
+    st.warning(f"Explainability unavailable: {str(e)}")
 
     # ---------------------------------
     # SHAP EXPLAINABILITY SECTION
