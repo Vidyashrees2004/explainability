@@ -67,38 +67,42 @@ if st.button("Predict Income"):
     # Fairness check
     if gender == "Female" and probability < 0.4:
         st.warning("⚠️ Possible gender bias detected")
-# SHAP Explainability
+# -------------------------------
+# EXPLAINABILITY (SHAP)
+# -------------------------------
 import shap
 
+st.subheader("🧠 Explainability (SHAP)")
+
 try:
-    # Create small background data (5 samples)
-    background = np.array([
-        [25, 12, 40, 0, 0],
-        [30, 13, 45, 1, 1],
-        [35, 14, 50, 0, 1],
-        [40, 16, 60, 1, 0],
-        [45, 10, 30, 0, 0]
-    ])
+    # Only run SHAP if real model available
+    if model is not None and JOBLIB_AVAILABLE:
+        explainer = shap.TreeExplainer(model)
 
-    # Scale background data
-    background_scaled = scaler.transform(background)
+        # SHAP requires 2D array
+        shap_values = explainer.shap_values(features_scaled)
 
-    # Use KernelExplainer for any model
-    explainer = shap.KernelExplainer(model.predict_proba, background_scaled)
+        # Convert SHAP array to 1D for display
+        if isinstance(shap_values, list):  
+            shap_values = shap_values[1]  # for binary classifier
 
-    shap_values = explainer.shap_values(features_scaled)
+        shap_values = shap_values.reshape(-1)
 
-    st.subheader("📊 SHAP Feature Importance")
-    st.write("Higher value = greater impact on income prediction")
+        feature_names = ["Age", "Education", "Hours", "Gender", "Race"]
+        shap_df = pd.DataFrame({
+            "Feature": feature_names,
+            "Importance": shap_values
+        }).sort_values("Importance", key=abs, ascending=False)
 
-    shap_bar = shap_values[1]  # class 1 (high income)
-    feature_names = ["Age", "Education", "Hours", "Gender", "Race"]
+        st.write("### 🔍 Feature Importance for this Prediction:")
+        st.dataframe(shap_df)
 
-    for name, val in zip(feature_names, shap_bar[0]):
-        st.write(f"**{name}:** {val:.4f}")
+    else:
+        st.warning("Explainability not available in demo mode.")
 
 except Exception as e:
-    st.warning(f"Explainability unavailable: {str(e)}")
+    st.error(f"Explainability unavailable: {str(e)}")
+
 
     # ---------------------------------
     # SHAP EXPLAINABILITY SECTION
